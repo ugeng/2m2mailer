@@ -27,7 +27,7 @@ module.exports = (grunt) ->
 
     }
 
-    grunt.loadTasks('../2m2/tasks');
+    grunt.loadTasks('../2m2mailer/tasks');
 
     grunt.initConfig(config)
 
