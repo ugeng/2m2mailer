@@ -200,11 +200,11 @@ describe 'emailService', ->
                    
                     expect(err).to.be.null
                     expect(list.length).to.be.eql numberOfDocs
-                    
+
                     for item, idx in list
                         expect(item.dateSent).to.not.be.undefined
                         expect(item.dateSent).to.not.be.null
-                        p = (email for email in pendings when email._id == item._id)
+                        p = (email for email in list when email._id == item._id)
                         expect(p).is.not.null
                         expect(p.length).is.eql 1
 

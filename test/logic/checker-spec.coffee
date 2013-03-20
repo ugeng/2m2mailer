@@ -42,7 +42,7 @@ expect = require('chai').expect
 assert = require('chai').assert
 sinon = require('sinon')
 
-describe 'Checker', ->
+xdescribe 'Checker', ->
 
     sandbox = {}
 

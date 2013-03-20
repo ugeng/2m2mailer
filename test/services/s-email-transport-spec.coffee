@@ -166,7 +166,7 @@ describe 'emailTransportService', ->
                 expect(sendMailStub.calledWithMatch(mailer.messageData)).to.be.true
                 done()
         
-        xit 'нормальное отправление одного письма (integration-style)', (done) ->
+        it 'нормальное отправление одного письма (integration-style)', (done) ->
 
             createTransportSpy = sandbox.spy(nodemailer, "createTransport")
             
