@@ -1,0 +1,11 @@
+server:
+  http://localhost:9876
+
+load:
+  - "node_modules/mocha/mocha.js"
+  - "node_modules/chai/chai.js"
+  - "./MochaAdapter.js"
+  - "src/*.coffee"
+
+test:
+  - "src/*.coffee"
