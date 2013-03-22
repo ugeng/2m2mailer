@@ -10,7 +10,20 @@ emailService = require '../../src/services/s-email'
 Binary = require("mongodb").Binary  
 
 expect = require('chai').expect
+assert = require('chai').assert
+Assertion = require('chai').Assertion
 sinon = require('sinon')
+
+Assertion.addMethod 'equalAsSets', (otherArray) ->
+    array = this._obj;
+    
+    expect(array).to.be.an.instanceOf(Array);
+    expect(otherArray).to.be.an.instanceOf(Array);
+    
+    diff = array.filter((i) -> return !(otherArray.indexOf(i) > -1))
+    
+    this.assert diff.length == 0, "expected #{this} to be equal to #{otherArray} (as sets, i.e. no order)", array, otherArray
+
 
 #-----------------------------
 # test helpers
@@ -19,7 +32,6 @@ logStub = require('../../src/infra/log').logStub
 describe 'emailService', ->
 
     sandbox = {}
-    stubEmails = {}
 
     data = []
     for i in [0...900]
@@ -51,6 +63,7 @@ describe 'emailService', ->
     
     describe 'getPendingList', () ->
 
+        stubEmails = {}
         beforeEach (done) ->
 
            
@@ -81,7 +94,9 @@ describe 'emailService', ->
             emailService.getPendingList (err, list) ->
                 
                 expect(err).to.be.null
-                expect(list).to.be.eql(pendings)
+                list        = list.sort((v1, v2) -> v1._id > v2._id )
+                pendings    = pendings.sort((v1, v2) -> v1._id > v2._id )
+                expect(list).is.eql pendings
                 done()
 
         it 'обработка ошибки при получении списка', (done) ->
@@ -97,12 +112,13 @@ describe 'emailService', ->
 
     describe 'getSentList', () ->
 
+        stubEmails = {}
         beforeEach (done) ->
 
             stubEmails =
-                [ { subject: 'reg', body: 'hello', from: 'sender', to: 'address1@server.org', cc: ['addr11@server.org', 'addr12@server.org'], bcc: ['addr13@server.org', 'addr14@server.org'], status: emailStatus.PENDING, dateCreated: new Date(), attachments: attachments },
+                [ { subject: 'reg', body: 'hello', from: 'sender', to: 'address1@server.org', cc: ['addr11@server.org', 'addr12@server.org'], bcc: ['addr13@server.org', 'addr14@server.org'], status: emailStatus.SENT, dateCreated: new Date(), attachments: attachments },
                     { subject: 'reg', body: 'hello', from: 'sender', to: 'address2@server.org', cc: ['addr21@server.org', 'addr22@server.org'], bcc: ['addr23@server.org', 'addr24@server.org'], status: emailStatus.ERROR, dateCreated: new Date(), attachments: attachments }
-                    { subject: 'reg', body: 'hello', from: 'sender', to: 'address3@server.org', cc: ['addr31@server.org', 'addr32@server.org'], bcc: ['addr33@server.org', 'addr34@server.org'], status: emailStatus.PENDING, dateCreated: new Date(), attachments: attachments }
+                    { subject: 'reg', body: 'hello', from: 'sender', to: 'address3@server.org', cc: ['addr31@server.org', 'addr32@server.org'], bcc: ['addr33@server.org', 'addr34@server.org'], status: emailStatus.SENT, dateCreated: new Date(), attachments: attachments }
                 ]
             cols.emails.remove () ->
                 cols.emails.insert stubEmails, {w: 1}, () ->
@@ -118,7 +134,10 @@ describe 'emailService', ->
             emailService.getSentList (err, list) ->
 
                 expect(err).to.be.null
-                expect(list).to.be.eql(sent)
+                list        = list.sort((v1, v2) -> v1._id > v2._id )
+                sent    = sent.sort((v1, v2) -> v1._id > v2._id )
+                expect(list).is.eql sent                
+                
                 done()
 
         it 'обработка ошибки при получении списка', (done) ->
@@ -134,12 +153,13 @@ describe 'emailService', ->
 
     describe 'geFailedList', () ->
 
+        stubEmails = {}
         beforeEach (done) ->
 
             stubEmails =
-                [ { subject: 'reg', body: 'hello', from: 'sender', to: 'address1@server.org', cc: ['addr11@server.org', 'addr12@server.org'], bcc: ['addr13@server.org', 'addr14@server.org'], status: emailStatus.ERROR, dateCreated: new Date(), attachments: attachments },
-                    { subject: 'reg', body: 'hello', from: 'sender', to: 'address2@server.org', cc: ['addr21@server.org', 'addr22@server.org'], bcc: ['addr23@server.org', 'addr24@server.org'], status: emailStatus.SENT, dateCreated: new Date(), attachments: attachments }
-                    { subject: 'reg', body: 'hello', from: 'sender', to: 'address3@server.org', cc: ['addr31@server.org', 'addr32@server.org'], bcc: ['addr33@server.org', 'addr34@server.org'], status: emailStatus.ERROR, dateCreated: new Date(), attachments: attachments }
+                [ { subject: 'reg', body: 'hello', from: 'sender', to: 'address1@server.org', cc: ['addr11@server.org', 'addr12@server.org'], bcc: ['addr13@server.org', 'addr14@server.org'], status: emailStatus.ERROR, dateCreated: new Date()},
+                    { subject: 'reg', body: 'hello', from: 'sender', to: 'address2@server.org', cc: ['addr21@server.org', 'addr22@server.org'], bcc: ['addr23@server.org', 'addr24@server.org'], status: emailStatus.SENT, dateCreated: new Date() }
+                    { subject: 'reg', body: 'hello', from: 'sender', to: 'address3@server.org', cc: ['addr31@server.org', 'addr32@server.org'], bcc: ['addr33@server.org', 'addr34@server.org'], status: emailStatus.ERROR, dateCreated: new Date()}
                 ]
             cols.emails.remove () ->
                 cols.emails.insert stubEmails, {w: 1}, () ->
@@ -149,13 +169,15 @@ describe 'emailService', ->
             done()
 
         it 'получение списка сообщений, оптравленных с ошибкой', (done) ->
-           
-            failedList = stubEmails.filter (item) -> return item.status == emailStatus.ERROR
+
+            failed = stubEmails.filter (item) -> return item.status == emailStatus.ERROR
                 
             emailService.getFailedList (err, list) ->
 
                 expect(err).to.be.null
-                expect(list).to.be.eql(failedList)
+                list        = list.sort((v1, v2) -> v1._id > v2._id )
+                failed      = failed.sort((v1, v2) -> v1._id > v2._id )
+                expect(list).is.eql failed
                 done()
 
         it 'обработка ошибки при получении списка', (done) ->
@@ -171,6 +193,7 @@ describe 'emailService', ->
 
     describe 'markAsSent', () ->
 
+        stubEmails = {}
         beforeEach (done) ->
 
             stubEmails =
@@ -242,6 +265,7 @@ describe 'emailService', ->
 
     describe 'markAsError', () ->
 
+        stubEmails = {}
         beforeEach (done) ->
 
             stubEmails =
@@ -306,6 +330,7 @@ describe 'emailService', ->
 
     describe 'removeOld', () ->
 
+        stubEmails = {}
         beforeEach (done) ->
 
             currentDate = new Date()
