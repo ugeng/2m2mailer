@@ -1,13 +1,14 @@
-process.env.NODE_ENV = 'test'
+#process.env.NODE_ENV = 'test'
 config = require '../../src/config'
 checker = require('../../src/logic/checker')
 
 #dependencies
 cronJob = require 'cron'
-Mailer = require '../../src/services/s-email-transport'
-MailerLog = Mailer.log
+mailer = require '../../src/services/s-email-transport'
+MailerLog = mailer.log
 dbEmailService = require '../../src/services/s-email'
 mailDbServiceLog = dbEmailService.log
+When = require 'when'
 
 #helpers
 db = require '../../src/infra/db'
@@ -42,12 +43,13 @@ expect = require('chai').expect
 assert = require('chai').assert
 sinon = require('sinon')
 
-xdescribe 'Checker', ->
+describe 'Checker', ->
 
     sandbox = {}
 
     before (done) ->
         # перенаправляем вывод штатных логов в заглушки, чтобы не засорять консоль
+        console.log 'running in %s environment.', process.env.NODE_ENV
         checker.setLog(logStub)
         dbEmailService.setLog(logStub)
         done()
@@ -118,7 +120,7 @@ xdescribe 'Checker', ->
 
             done()
 
-        it 'создание объекта с ошибкой (1) (BDD-style)', (done) ->
+        it 'создание объекта с ошибкой (2) (BDD-style)', (done) ->
 
             ex = new Error("gsom!!!1")
 
@@ -140,7 +142,7 @@ xdescribe 'Checker', ->
 
             done()
 
-        it 'создание объекта с ошибкой (1) (BDD-style)', (done) ->
+        it 'создание объекта с ошибкой (3) (BDD-style)', (done) ->
 
             ex = new Error("gsom!!!1")
 
@@ -177,7 +179,7 @@ xdescribe 'Checker', ->
 
             now = new Date()
             console.log 'real: ' + now, now.getFullYear(), now.getMonth(), now.getDate()
-            fakeDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 01, 59, 59)
+            fakeDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 1, 59, 59)
             console.log 'fake: ' + fakeDate
 
             this.clock = sandbox.useFakeTimers(fakeDate.getTime())
@@ -247,7 +249,7 @@ xdescribe 'Checker', ->
 
             this.clock.tick(fakeTimeInterval + 10);            
 
-    xdescribe 'clearOld', () ->
+    describe 'clearOld', () ->
 
         _checker = {}
 
@@ -286,7 +288,7 @@ xdescribe 'Checker', ->
                     expect(docs.length).to.be.eql stubEmails.length - numberOfOldDocs
                     done()
 
-    xdescribe 'handlePendings', () ->
+    describe 'handleJob', () ->
 
         _checker = {}
 
@@ -298,19 +300,24 @@ xdescribe 'Checker', ->
         it 'нормальная работа процедуры', (done) ->
 
             pendings = (email for email in stubEmails when email.status == emailStatus.PENDING)
-            resultStub = {128719837891}
-            nextResultStub = {137826}
+            sendDocsResultStub = [{doc: {}, success: true}, {doc: {}, success: false}, {doc: {}, success: true}, {doc: {}, success: true}, {doc: {}, success: false}]
+
             getPendingListStub = sandbox.stub(dbEmailService, "getPendingList").yields(null, pendings)
-            sendDocsStub = sandbox.stub(_checker, "sendDocs").yields(null, resultStub)
-            markDocsStub = sandbox.stub(_checker, "markDocs").yields(null, nextResultStub)
+            sendDocsStub = sandbox.stub(_checker, "sendDocs").returns(sendDocsResultStub)
+            forSuccessfullSpy = sandbox.stub(_checker, "forSuccessfull").returns({})
+            forFailedSpy = sandbox.stub(_checker, "forFailed").returns({})
             
-            _checker.handlePendings (err, result) ->
+            _checker.handleJob 'pendingJob', getPendingListStub, (err, result) ->
                 
-                expect(err).to.be.null
-                expect(result).to.be.eql nextResultStub
-                expect(getPendingListStub.calledOnce).to.be.true
-                expect(sendDocsStub.calledWithMatch(pendings)).to.be.true
-                expect(markDocsStub.calledWithMatch(resultStub)).to.be.true
+                expect(err).is.null
+                expect(result).is.eql sendDocsResultStub
+                expect(result).is.eql sendDocsResultStub
+                expect(getPendingListStub.calledOnce).is.true
+                expect(sendDocsStub.calledWithMatch(pendings)).is.true
+                success = (result.doc for result in sendDocsResultStub when result.success == true)
+                failed = (result.doc for result in sendDocsResultStub when result.success == false)
+                expect(forSuccessfullSpy.calledWithMatch(success)).is.true
+                expect(forFailedSpy.calledWithMatch(failed)).is.true
                 done()
 
         it 'нормальная работа процедуры, документов не найдено', (done) ->
@@ -318,282 +325,167 @@ xdescribe 'Checker', ->
             pendings = []
             getPendingListStub = sandbox.stub(dbEmailService, "getPendingList").yields(null, pendings)
 
-            _checker.handlePendings (err, result) ->
+            _checker.handleJob 'pendingJob', getPendingListStub, (err, result) ->
 
-                expect(err).to.be.null
-                expect(result).to.be.undefined
-                expect(getPendingListStub.called).to.be.true
+                expect(err).is.null
+                expect(result).is.undefined
+                expect(getPendingListStub.called).is.true
                 done()
         
         it 'ошибка при получении списка', (done) ->
 
             error = { message: "error!!!11gsom"}
-            sandbox.stub(dbEmailService, "getPendingList").yields(error)
-            sendDocsSpy = sandbox.spy(_checker, "sendDocs")
-            logSpy = sandbox.spy(logStub, "error")
-            
-            _checker.handlePendings (err, result) ->
-                
-                expect(err).to.be.eql error
-                expect(result).to.be.undefined                
-                expect(logSpy.calledOnce).to.be.true
-                expect(sendDocsSpy.notCalled).to.be.true
-                done()
-        
-        it 'ошибка при отправке списка писем', (done) ->
-
-            pendings = (email for email in stubEmails when email.status == emailStatus.PENDING)
-            error = { message: "error!!!11gsom"}
-            sandbox.stub(dbEmailService, "getPendingList").yields(null, pendings)
-            sandbox.stub(_checker, "sendDocs").yields(error)
-            markdDocsSpy = sandbox.spy(_checker, "markDocs")
-            logSpy = sandbox.spy(logStub, "error")
-
-            _checker.handlePendings (err, result) ->
-
-                expect(err).to.be.eql error
-                expect(result).to.be.undefined
-                expect(logSpy.calledOnce).to.be.true
-                expect(markdDocsSpy.notCalled).to.be.true
-                done()
-
-        it 'ошибка при маркировке списков писем', (done) ->
-
-            pendings = (email for email in stubEmails when email.status == emailStatus.PENDING)
-            resultStub = {128719837891}
-            error = { message: "error!!!11gsom"}
-            sandbox.stub(dbEmailService, "getPendingList").yields(null, pendings)
-            sandbox.stub(_checker, "sendDocs").yields(null, resultStub)
-            sandbox.stub(_checker, "markDocs").yields(error)
-
-            _checker.handlePendings (err, result) ->
-
-                expect(err).to.be.eql error
-                expect(result).to.be.undefined
-                done()
-
-    xdescribe 'handleFailed', () ->
-
-        _checker = {}
-
-        beforeEach (done) ->
-            _checker = mockChecker(sandbox)
-            insertStubEmails collections.emails, () ->
-                done()
-
-        it 'нормальная работа процедуры', (done) ->
-
-            failed = (email for email in stubEmails when email.status == emailStatus.ERROR)
-            resultStub = {128719837891}
-            nextResultStub = {137826}
-            getFailedListStub = sandbox.stub(dbEmailService, "getFailedList").yields(null, failed)
-            sendDocsStub = sandbox.stub(_checker, "sendDocs").yields(null, resultStub)
-            markDocsStub = sandbox.stub(_checker, "markDocs").yields(null, nextResultStub)
-
-            _checker.handleFailed (err, result) ->
-                expect(err).to.be.null
-                expect(result).to.be.eql nextResultStub
-                expect(getFailedListStub.calledOnce).to.be.true
-                expect(sendDocsStub.calledWithMatch(failed)).to.be.true
-                expect(markDocsStub.calledWithMatch(resultStub)).to.be.true
-                done()
-
-        it 'нормальная работа процедуры, документов не найдено', (done) ->
-
-            pendings = []
-            getFailedListStub = sandbox.stub(dbEmailService, "getFailedList").yields(null, pendings)
-
-            _checker.handleFailed (err, result) ->
-
-                expect(err).to.be.null
-                expect(result).to.be.undefined
-                expect(getFailedListStub.called).to.be.true
-                done()
-        
-        it 'ошибка при получении списка', (done) ->
-
-            error = { message: "error!!!11gsom"}
-            sandbox.stub(dbEmailService, "getFailedList").yields(error)
+            getPendingListStub = sandbox.stub(dbEmailService, "getPendingList").yields(error)
             sendDocsSpy = sandbox.spy(_checker, "sendDocs")
             logSpy = sandbox.spy(logStub, "error")
 
-            _checker.handleFailed (err, result) ->
-
-                expect(err).to.be.eql error
-                expect(result).to.be.undefined
-                expect(logSpy.calledOnce).to.be.true
-                expect(sendDocsSpy.notCalled).to.be.true
-                done()
-
-        it 'ошибка при отправке списка писем', (done) ->
-
-            failed = (email for email in stubEmails when email.status == emailStatus.ERROR)
-            error = { message: "error!!!11gsom"}
-            sandbox.stub(dbEmailService, "getFailedList").yields(null, failed)
-            sandbox.stub(_checker, "sendDocs").yields(error)
-            markdDocsSpy = sandbox.spy(_checker, "markDocs")
-            logSpy = sandbox.spy(logStub, "error")
-
-            _checker.handleFailed (err, result) ->
-
-                expect(err).to.be.eql error
-                expect(result).to.be.undefined
-                expect(logSpy.calledOnce).to.be.true
-                expect(markdDocsSpy.notCalled).to.be.true
-                done()
-
-        it 'ошибка при маркировке списков писем', (done) ->
-
-            failed = (email for email in stubEmails when email.status == emailStatus.ERROR)
-            resultStub = {128719837891}
-            error = { message: "error!!!11gsom"}
-            sandbox.stub(dbEmailService, "getFailedList").yields(null, failed)
-            sandbox.stub(_checker, "sendDocs").yields(null, resultStub)
-            sandbox.stub(_checker, "markDocs").yields(error)
-
-            _checker.handleFailed (err, result) ->
-
-                expect(err).to.be.eql error
-                expect(result).to.be.undefined
+            _checker.handleJob 'pendingJob', getPendingListStub, (err, result) ->
+                
+                expect(err).is.eql error
+                expect(result).is.undefined                
+                expect(logSpy.calledOnce).is.true
+                expect(sendDocsSpy.notCalled).is.true
                 done()
         
-    xdescribe 'sendDocs', () ->
+    describe 'sendDocs', () ->
 
-        _checker = {}
+        _checker = undefined
 
-        beforeEach (done) ->
-            _checker = mockChecker(sandbox)
+        before (done) ->
+            @sandbox = sinon.sandbox.create()
+            @checker = mockChecker(@sandbox)
+            @checkerMock = @sandbox.mock(@checker)
             insertStubEmails collections.emails, () ->
                 done()
 
-        it 'нормальная работа', (done) ->
+        describe 'Нормальная работа', ->
 
-            toSend = (email for email in stubEmails when email.status != emailStatus.SENT)
-            
-            mailerStub = {
-                id: "mailerStub"
-                send: (doc, callback) ->
-            }
+            before (done) ->
 
-            errorStub = { message: "error!!!11gsom"}
-            
-            responseStub = {
-                message: "ta-da-dammm!"
-                messageId: 37784216
-                failedRecipients: ["someRecipient"]
-            }
+                @toSend = (email for email in stubEmails when email.status != emailStatus.SENT)
+    
+                defers = []
+                stubs = []
+                for doc in @toSend
+                    defer = When.defer()
+                    defers.push defer
+                    @checkerMock.expects("sendDoc").withArgs(doc).returns(defer.promise)
+    
+                When @checker.sendDocs(@toSend), (results) =>
+                    @results = results
+                    done()                    
 
-            #stubbibg a mailer constructor to get mailerStub
-            sandbox.stub(Mailer, "Mailer").returns mailerStub
+                #resolving defers
+                for defer, i in defers
+                    defer.resolve({doc: {value: 'someVal'}, success: true})
 
-            mock = sandbox.mock(mailerStub)
-            sendExps1 = mock.expects("send").withArgs(toSend[0]).yields(null, responseStub)
-            sendExps2 = mock.expects("send").withArgs(toSend[1]).yields(errorStub)
-
-            _checker.sendDocs toSend, (err, result) ->
-
-                expect(err).to.be.null
-                expect(result?).to.be.true
-                expect(result.failed[0]).to.be.eql toSend[1]
-                expect(result.errorList[0]).to.be.eql errorStub
-                expect(result.sent[0]).to.be.eql toSend[0]
-                expect(result.responseList[0]).to.be.eql responseStub
+            it 'Метод sendDoc должен вызываться для каждого документа', ->
+                @checkerMock.verify()
                 
-                sandbox.verify()
-                done()
+            it 'Должна вызываться процедура обратного вызова для успешных promises', ->
+                expect(@results?).is.true
+            
+            it 'Количество успешных promises должно совпадать с количеством исходных документов', ->
+                expect(@results.length).is.eql @toSend.length
 
         it 'пустой или неопределенный список писем', (done) ->
-
-            _checker.sendDocs null, (err, result) ->
-
-                expect(err).to.be.eql RES.INVALID_ARGUMENTS
-                expect(result).to.be.undefined
-                done()
-
-    xdescribe 'markDocs', () ->
-
-        responseStub = {} 
-
-        _checker = {}
-
-        beforeEach (done) ->
-            _checker = mockChecker(sandbox)
-            insertStubEmails collections.emails, () ->
-                responseStub = {
-                    message: "ta-da-dammm!"
-                    messageId: 37784216
-                    failedRecipients: ["someRecipient"]
-                }
-                done()
-
-        it 'без сбоев при отправлении', (done) ->
             
-            responseStub.failedRecipients = undefined
-            
-            sendDocsResultStub = {
-                sent: [stubEmails[0], stubEmails[2]]
-                responseList: [ responseStub, responseStub]
-            }
+            result = @checker.sendDocs null
+            expect(result).is.eql RES.INVALID_ARGUMENTS
+            done()
+    
+    after (done) ->
+        @sandbox.restore()
+        done()
 
-            markAsFailedSpy = sandbox.spy(dbEmailService, "markAsFailed")
-            sandbox.stub(dbEmailService, "markAsSent").yields(null, sendDocsResultStub.sent.length)
-            logSpy = sandbox.spy(logStub, "error")
-
-            _checker.markDocs sendDocsResultStub, (err, sendDocsResultStub) ->
-
-                expect(err).to.be.null
-                expect(markAsFailedSpy.notCalled).to.be.true
-                expect(sendDocsResultStub.failedMarked).to.be.undefined
-                expect(sendDocsResultStub.sentMarked).to.be.eql sendDocsResultStub.sent.length
-                # log не должен выводить ничего 
-                expect(logSpy.notCalled).to.be.true
-                done()
+describe 'sendDoc', () ->
+    
+    before (done) ->
+        done()
+    
+    describe 'Нормальная работа', ->
         
-        it 'есть сбои при отправлении (+ сбои при отправлениях копий)', (done) ->
-
-            sendDocsResultStub = {
-                failed: [stubEmails[0], stubEmails[2]]
-                sent: [stubEmails[1]]
-                responseList: [ responseStub ]
-            }            
+        before (done) ->
+            @doc = {value: 'someValue'}
             
-            sandbox.stub(dbEmailService, "markAsFailed").yields(null, sendDocsResultStub.failed.length)
-            sandbox.stub(dbEmailService, "markAsSent").yields(null, sendDocsResultStub.sent.length)
-            logSpy = sandbox.spy(logStub, "error")
-
-            _checker.markDocs sendDocsResultStub, (err, sendDocsResultStub) ->
-                
-                expect(err).to.be.null
-                expect(sendDocsResultStub.failedMarked).to.be.eql sendDocsResultStub.failed.length
-                expect(sendDocsResultStub.sentMarked).to.be.eql sendDocsResultStub.sent.length
-                # log должен вывести: 
-                # одно служебное сообщение для оповещения + 
-                # + сообщения для каждого полностью сбойного отправления + 
-                # + сообщения для каждого получателя внутри "писем" (в случае когда поля to, cc, bcc -- массивы),отправление которым завершилось ошибкой  
-                expect(logSpy.callCount).to.be.eql 1 + sendDocsResultStub.failed.length + responseStub.failedRecipients.length
-                done()
-
-        it 'сбои при маркировке документов в базе', (done) ->
-
-            sendDocsResultStub = {
-                failed: [stubEmails[0], stubEmails[2]]
-                sent: [stubEmails[1]]
-            }
+            @sandbox = sinon.sandbox.create()
             
-            numberOfFailedDocsMarked = 1
-            sandbox.stub(dbEmailService, "markAsFailed").yields(RES.UPDATE_NOT_ALL_DOCUMENTS_INVOLVED, numberOfFailedDocsMarked)
-            sandbox.stub(dbEmailService, "markAsSent").yields(RES.INTERNAL_ERROR)
-            logSpy = sandbox.spy(logStub, "error")
+            @checker = mockChecker(@sandbox)
+            
+            @mailerStub = {send: @sandbox.stub().yields(null, {ok: true})}
+            @mailerMock = @sandbox.mock(mailer)
+            @mailerMock.expects("Mailer").once().withArgs(config.mailTransportType, config.mailTransportConfig).returns(@mailerStub)
 
-            _checker.markDocs sendDocsResultStub, (err, sendDocsResultStub) ->
+            @deferStub = {resolve: @sandbox.spy()}
+            @deferMock = @sandbox.mock(When)
+            @deferMock.expects("defer").once().returns(@deferStub)            
 
-                expect(err).to.be.null
-                expect(sendDocsResultStub.failedMarked).to.be.eql numberOfFailedDocsMarked
-                expect(sendDocsResultStub.sentMarked).to.be.eql 0
-                # log должен вывести: 
-                # одно служебное сообщение для оповещения + 
-                # два сообщения об ошибках при маркировке +
-                # + сообщения для каждого полностью сбойного отправления + 
-                expect(logSpy.callCount).to.be.eql  1 + 2 + sendDocsResultStub.failed.length
-                done()
-       
+            @result = @checker.sendDoc @doc
+
+            done()
+
+        it 'Должен возвращать непустой результат', ->
+            expect(@result).is.not.false
+            expect(@result).is.not.null
+            
+        it 'Должен конструировать объект-транспорт с верными параметрами', ->
+            @mailerMock.verify()
+
+        it 'Должен вызывать транспортный метод send с документом в качестве первого аргумента', ->
+            expect(@mailerStub.send.lastCall.args[0]).is.eql @doc
+
+        it 'Должен конструировать объект-обещание', ->
+            @deferMock.verify()            
+
+        it 'Должен разрешать promise с верным значением', ->
+            expect(@deferStub.resolve.lastCall.args[0]).is.eql {doc: @doc, success: true}
+            
+        after (done) ->
+            @sandbox.restore()
+            done()
+
+    describe 'Сбой', ->
+
+        before (done) ->
+            @doc = {value: 'someValue'}
+
+            @sandbox = sinon.sandbox.create()
+
+            @checker = mockChecker(@sandbox)
+
+            @mailerStub = {send: @sandbox.stub().yields(@err = {message: "gsom!!11"})}
+            @mailerMock = @sandbox.mock(mailer)
+            @mailerMock.expects("Mailer").once().withArgs(config.mailTransportType, config.mailTransportConfig).returns(@mailerStub)
+
+            @deferStub = {resolve: @sandbox.spy()}
+            @deferMock = @sandbox.mock(When)
+            @deferMock.expects("defer").once().returns(@deferStub)
+
+            @logSpy = @sandbox.spy(logStub, "error")
+            
+            @result = @checker.sendDoc @doc
+
+            done()
+
+        it 'Должен возвращать непустой результат', ->
+            expect(@result).is.not.false
+            expect(@result).is.not.null
+
+        it 'Должен конструировать объект-транспорт с верными параметрами', ->
+            @mailerMock.verify()
+
+        it 'Должен вызывать транспортный метод send с документом в качестве первого аргумента', ->
+            expect(@mailerStub.send.lastCall.args[0]).is.eql @doc
+
+        it 'Должен конструировать объект-обещание', ->
+            @deferMock.verify()
+
+        it 'Должен документировать сообщение об ошибке', ->
+            expect(@err in @logSpy.lastCall.args).is.true                          
+
+        it 'Должен разрешать promise с верным значением', ->
+            expect(@deferStub.resolve.lastCall.args[0]).is.eql {doc: @doc, success: false}
+
+        after (done) ->
+            @sandbox.restore()
+            done()

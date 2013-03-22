@@ -5,6 +5,7 @@ module.exports = require 'log4js'
 module.exports.logStub = {
     debug: (message)->
     info: (message)->
+    warn: (message)->
     error: (message)->
     fatal: (message)->
 }

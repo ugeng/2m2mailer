@@ -61,8 +61,7 @@ module.exports.mailTransportConfig = {
 module.exports.checker = {
     clearOldCronJobPattern: '00 00 02 * * *' #runs every day in 02-00 am 
     
-    #handlePendingsCronJobPattern: '00 * * * * *' #runs every minute
-    handlePendingsCronJobPattern: '*/20 * * * * *' #runs every 20 sec
+    handlePendingsCronJobPattern: '00 * * * * *' #runs every minute
     
     handleFailedCronJobPattern: '* */10 * * * *' #runs every 10 minutes
 }

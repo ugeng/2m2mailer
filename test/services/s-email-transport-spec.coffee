@@ -165,23 +165,3 @@ describe 'emailTransportService', ->
                 expect(mailer.messageData.attachments[0].filePath).to.be.eql config.attachmentsBaseDirectory + email.attachments[0].filePath                
                 expect(sendMailStub.calledWithMatch(mailer.messageData)).to.be.true
                 done()
-        
-        it 'нормальное отправление одного письма (integration-style)', (done) ->
-
-            createTransportSpy = sandbox.spy(nodemailer, "createTransport")
-            
-            mailer = new Mailer.Mailer config.mailTransportType, config.mailTransportConfig
-
-            transport = mailer.transport
-
-            sendMailSpy = sandbox.spy(transport, "sendMail")
-
-            mailer.send email, (err, result) ->
-
-                expect(sendMailSpy.calledOnce).to.be.true
-                expect(err).to.be.null
-                expect(result).to.not.be.undefined
-                expect(result).to.not.be.null
-                expect(result.failedRecipients).to.be.eql([])
-
-                done()

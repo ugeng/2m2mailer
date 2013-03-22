@@ -4,7 +4,7 @@
   "private": true,
   "main": "src/app.coffee",
   "scripts": {
-    "start": "coffee src/app.coffee"
+    "start": "node .build/src/app.js"
   },
   "dependencies": {
     "coffee-script": "1.2.0",
@@ -23,8 +23,9 @@
   },
   "devDependencies": {
     "watch": "~0.5.1",
-    "coffee-script": "~1.2.0",
-    "coffee-script-redux": "~2.0.0-beta4",
-    "grunt": "~0.4.0"
+    "coffee-script": "~1.6.2",
+    "grunt": "~0.4.0",
+    "watchr": "~2.3.9",
+    "coffee-script-redux": "~2.0.0-beta4"
   }
 }

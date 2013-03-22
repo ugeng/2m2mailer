@@ -23,11 +23,9 @@ module.exports = (grunt) ->
             options:
                 mode: 'once'
                 redux: true
-
-
     }
 
-    grunt.loadTasks('../2m2mailer/tasks');
+    grunt.loadTasks('tasks');
 
     grunt.initConfig(config)
 
