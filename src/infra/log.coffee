@@ -1,4 +1,5 @@
 module.exports = require 'log4js'
+module.exports.configure({ appenders: [ ], replaceConsole: false })
 
 #------------------------------------
 # helper stub log

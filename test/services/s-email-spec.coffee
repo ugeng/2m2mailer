@@ -294,8 +294,9 @@ describe 'emailService', ->
                 expect(numberOfDocs).to.be.equal failedList.length
 
                 emailService.getFailedList (err, list) ->
-                    expect(err).to.be.null
-                    expect(list).to.be.eql(failedList)
+                    for item, idx in list
+                        expect(item.status).is.eql emailStatus.ERROR
+                        expect(item.attempts).is.least 1
                     done()
 
         it 'не все документы изменены при смене статуса отправленных сообщений', (done) ->
